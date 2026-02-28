@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-ai-dashboard"
+version = "0.1.0"
+description = "Enterprise monorepo scaffold for Agentic AI Dashboard"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Agentic AI Dashboard Team" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.0.0",
+  "coverage[toml]>=7.0.0",
+  "mypy>=1.8.0",
+  "pre-commit>=3.6.0",
+  "pytest>=8.0.0",
+  "ruff>=0.3.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["packages*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+packages = ["packages.common"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["packages/common"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

@@ -6,7 +6,7 @@ on:
       - master
 
 env:
-  PROJECT_ID: sampleproject-322017
+  PROJECT_ID: shyamportfolio-3f1a3
   REGION: us-central1
   SERVICE_NAME: agentic-ai-dashboard
 

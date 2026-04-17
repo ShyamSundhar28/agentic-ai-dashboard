@@ -53,9 +53,56 @@ if uploaded_file is not None:
     profile = profile_data(df_raw)
     writer.save_json(run_id, "profile.json", profile)
     
-    # Dashboard Layout
+    # Phase 5 & 6: Agent Pipeline & Query
+    from agents.supervisor import SupervisorAgent
     st.markdown("---")
+    st.subheader("🤖 Ask your Data")
+    user_query = st.text_input("Enter your question (e.g., 'Analyze trend and suggest recommendations')", placeholder="e.g. Please analyze this data and show some charts")
+    
+    if user_query:
+        supervisor = SupervisorAgent()
+        with st.spinner("Agents are working..."):
+            response = supervisor.run_pipeline(user_query, df_raw, profile['inferred_types'], run_id)
+            writer.save_json(run_id, "supervisor_response.json", response.model_dump())
+            
+            st.success(response.final_output)
+            
+            # Show results in dynamic sections
+            if "analysis" in response.results:
+                with st.expander("📝 Analysis Summary", expanded=True):
+                    st.write(response.results["analysis"].summary)
+            
+            if "visualizations" in response.results:
+                with st.expander("📈 Generated Visualizations", expanded=True):
+                    for viz in response.results["visualizations"]:
+                        st.write(f"#### {viz.title}")
+                        # Simple dispatch based on VizAgent specs
+                        if viz.chart_type == "histogram":
+                            fig = px.histogram(df_raw, x=viz.config['column'])
+                        elif viz.chart_type == "bar":
+                            fig = px.bar(df_raw, x=viz.config['column'])
+                        elif viz.chart_type == "line":
+                            fig = px.line(df_raw, x=viz.config['x'], y=viz.config['y'])
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            if "root_cause" in response.results:
+                with st.expander("🔍 Root Cause Analysis"):
+                    rca = response.results["root_cause"]
+                    st.write(f"**Primary Driver:** {rca.primary_driver}")
+                    st.write(rca.details)
+                    st.progress(rca.confidence, text=f"Confidence: {rca.confidence*100}%")
+
+            if "recommendations" in response.results:
+                with st.expander("💡 Recommendations"):
+                    for rec in response.results["recommendations"]:
+                        st.write(f"**- {rec.action}**")
+                        st.write(f"  *{rec.rationale}*")
+
+    # Original Tabs (static analysis)
+    st.markdown("---")
+    st.write("### 📎 Session Workspace")
     tabs = st.tabs(["预览 (Preview)", "分析 (Analysis)", "图表 (Charts)"])
+
     
     with tabs[0]:
         st.subheader("📊 Data Preview")

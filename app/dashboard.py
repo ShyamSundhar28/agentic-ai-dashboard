@@ -90,7 +90,16 @@ if uploaded_file is not None:
                     rca = response.results["root_cause"]
                     st.write(f"**Primary Driver:** {rca.primary_driver}")
                     st.write(rca.details)
-                    st.progress(rca.confidence, text=f"Confidence: {rca.confidence*100}%")
+                    
+                    m1, m2 = st.columns(2)
+                    m1.metric("Delta (Abs)", f"{rca.absolute_change:,.2f}")
+                    m2.metric("Delta (%)", f"{rca.percent_change:+.2f}%")
+                    
+                    if rca.contribution_table:
+                        st.write("**Contribution by Subgroup:**")
+                        st.dataframe(pd.DataFrame(rca.contribution_table), use_container_width=True)
+                    
+                    st.progress(max(0.0, min(1.0, rca.confidence)), text=f"Confidence: {rca.confidence*100}%")
 
             if "recommendations" in response.results:
                 with st.expander("💡 Recommendations"):

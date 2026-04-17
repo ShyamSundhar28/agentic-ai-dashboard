@@ -9,7 +9,6 @@ from typing import Dict
 
 class SupervisorAgent:
     def __init__(self):
-        self.planner = PlannerAgent()
         self.analyst = AnalystAgent()
         self.viz = VizAgent()
         self.rca = RCAAgent()
@@ -17,6 +16,7 @@ class SupervisorAgent:
 
     def run_pipeline(self, query: str, df: pd.DataFrame, schema: Dict[str, str], run_id: str) -> SupervisorResponse:
         # 1. Plan
+        self.planner = PlannerAgent(schema)
         plan = self.planner.generate_plan(query)
         results = {}
         
@@ -27,7 +27,7 @@ class SupervisorAgent:
             elif step.id == "viz":
                 results["visualizations"] = self.viz.execute(df, schema)
             elif step.id == "rca":
-                results["root_cause"] = self.rca.execute(df)
+                results["root_cause"] = self.rca.execute(df, plan.intent)
             elif step.id == "recommender":
                 results["recommendations"] = self.recommender.execute()
                 

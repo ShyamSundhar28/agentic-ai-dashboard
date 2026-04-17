@@ -192,8 +192,42 @@ def main():
             tabs = st.tabs(["📊 Data Browser", "🔍 Automated Profiling", "📈 Suggested Charts", "🗄️ SQL Analytics"])
 
             with tabs[0]:
-                st.dataframe(get_table_preview(store.conn, run_ctx.table_name), use_container_width=True)
+                if st.button("✨ Clean Data with AI"):
+                    with st.spinner("Analyzing column contents using AI..."):
+                        try:
+                            from core.llm_service import LLMService
+                            llm = LLMService()
+                            
+                            # Retrieve the full data
+                            df_to_clean = store.conn.execute(f"SELECT * FROM {run_ctx.table_name}").df()
+                            
+                            # 1. Redundant safeguard: Drop completely empty columns
+                            df_to_clean.dropna(axis=1, how='all', inplace=True)
+                            
+                            # 2. Use LLM to rename generic columns
+                            new_cols = []
+                            for col in df_to_clean.columns:
+                                col_str = str(col)
+                                # Target columns that didn't have proper names
+                                if "column_" in col_str or "numeric_header_" in col_str or "unnamed" in col_str.lower():
+                                    samples = df_to_clean[col].dropna().astype(str).head(5).tolist()
+                                    if samples:
+                                        inferred = llm.infer_column_name(col_str, samples)
+                                        new_cols.append(inferred)
+                                    else:
+                                        new_cols.append(col_str)
+                                else:
+                                    new_cols.append(col_str)
+                                    
+                            df_to_clean.columns = new_cols
+                            store.create_table_from_df(df_to_clean, run_ctx.table_name)
+                            st.success("Data magically cleaned using AI!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to clean data: {e}")
 
+                st.dataframe(get_table_preview(store.conn, run_ctx.table_name), use_container_width=True)
+                
             with tabs[1]:
                 col1, col2 = st.columns(2)
                 col1.write("**Inferred Types**")

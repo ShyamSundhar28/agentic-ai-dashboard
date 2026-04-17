@@ -29,10 +29,11 @@ if uploaded_file is not None:
     # Refresh temp file with cleaned columns for DuckDB
     df_raw.to_csv(temp_path, index=False)
     
-    # Initialize DuckDB and load
-    conn = duckdb.connect(':memory:')
+    # Initialize DuckDB Store and load
+    from tools.duckdb_store import DuckDBStore
+    store = DuckDBStore()
     table_name = "uploaded_data"
-    load_csv_to_duckdb(temp_path, table_name, conn)
+    store.create_table_from_df(df_raw, table_name)
     
     # Dashboard Layout
     st.markdown("---")
@@ -40,14 +41,16 @@ if uploaded_file is not None:
     
     with col1:
         st.subheader("📊 Data Preview (First 20 rows)")
-        preview_df = get_table_preview(conn, table_name, limit=20)
+        preview_df = store.query(f"SELECT * FROM {table_name} LIMIT 20")
         st.dataframe(preview_df, use_container_width=True)
         
     with col2:
-        st.subheader("🔍 Schema Inference")
+        st.subheader("🔍 Schema Inference & Stats")
+        stats = store.get_table_stats(table_name)
         profile = profile_data(df_raw)
-        st.write(f"**Rows:** {profile['num_rows']}")
-        st.write(f"**Columns:** {profile['num_columns']}")
+        
+        st.write(f"**Rows:** {stats['row_count']}")
+        st.write(f"**Columns:** {stats['col_count']}")
         
         st.write("**Inferred Types:**")
         st.json(profile['inferred_types'])

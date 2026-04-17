@@ -97,7 +97,23 @@ def main():
                 f.write(uploaded_file.getbuffer())
 
             df_raw = pd.read_csv(temp_path)
-            df_raw.columns = [clean_column_name(col) for col in df_raw.columns]
+            
+            # 1. Drop columns that are completely empty (null)
+            df_raw.dropna(axis=1, how='all', inplace=True)
+            
+            # 2. Clean up column names dynamically
+            new_cols = []
+            for i, col in enumerate(df_raw.columns):
+                cleaned = clean_column_name(str(col))
+                # Fix pandas 'Unnamed' or empty columns
+                if 'unnamed' in cleaned or not cleaned:
+                    cleaned = f"column_{i+1}"
+                # If a column name is just a number (e.g. no header row)
+                elif cleaned.isdigit():
+                    cleaned = f"numeric_header_{cleaned}"
+                new_cols.append(cleaned)
+            
+            df_raw.columns = new_cols
             
             # Update store
             store.create_table_from_df(df_raw, run_ctx.table_name)

@@ -46,11 +46,26 @@ def infer_column_types(df: pd.DataFrame) -> Dict[str, str]:
 
 def profile_data(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Returns a basic data profile.
+    Returns a detailed data profile.
     """
+    schema = infer_column_types(df)
+    
+    numeric_summary = {}
+    for col, dtype in schema.items():
+        if dtype == "numeric":
+            numeric_summary[col] = df[col].describe().to_dict()
+            
+    categorical_summary = {}
+    for col, dtype in schema.items():
+        if dtype == "categorical":
+            categorical_summary[col] = df[col].value_counts().head(5).to_dict()
+
     return {
         "num_rows": len(df),
         "num_columns": len(df.columns),
-        "inferred_types": infer_column_types(df),
-        "missing_values": df.isnull().sum().to_dict()
+        "inferred_types": schema,
+        "missing_values": df.isnull().sum().to_dict(),
+        "numeric_summary": numeric_summary,
+        "categorical_summary": categorical_summary
     }
+

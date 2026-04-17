@@ -1,0 +1,16 @@
+import logging
+import sys
+
+def setup_logging(level: str = "INFO"):
+    """
+    Sets up basic logging for the application.
+    """
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+logger = logging.getLogger("agentic_dashboard")

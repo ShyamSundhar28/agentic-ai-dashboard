@@ -7,3 +7,4 @@ python-dotenv
 pyarrow
 pytest
 pydantic-settings
+google-generativeai

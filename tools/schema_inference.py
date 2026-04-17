@@ -12,7 +12,8 @@ def clean_column_name(name: str) -> str:
     name = re.sub(r'[\s\-]+', '_', name)
     # Remove special characters (keep alphanumeric and underscores)
     name = re.sub(r'[^\w_]', '', name)
-    # Remove leading numbers/underscores if they make the name invalid for SQL (optional but good)
+    # Remove leading/trailing underscores and multiple underscores
+    name = re.sub(r'_+', '_', name).strip('_')
     return name
 
 def infer_column_types(df: pd.DataFrame) -> Dict[str, str]:

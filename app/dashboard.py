@@ -98,10 +98,19 @@ def main():
 
             df_raw = pd.read_csv(temp_path)
             
-            # 1. Drop columns that are completely empty (null)
+            # 1. Aggressive cleaning: Drop columns that are completely empty
             df_raw.dropna(axis=1, how='all', inplace=True)
             
-            # 2. Clean up column names dynamically
+            # 2. Aggressive cleaning: Drop unnamed columns that have no actual data rows
+            # (Sometimes pandas reads trailing commas as Unnamed columns with all NaNs)
+            cols_to_drop = []
+            for col in df_raw.columns:
+                if "Unnamed" in str(col) and df_raw[col].isnull().all():
+                    cols_to_drop.append(col)
+            if cols_to_drop:
+                df_raw.drop(columns=cols_to_drop, inplace=True)
+
+            # 3. Clean up remaining column names dynamically
             new_cols = []
             for i, col in enumerate(df_raw.columns):
                 cleaned = clean_column_name(str(col))

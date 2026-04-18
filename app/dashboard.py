@@ -181,43 +181,66 @@ def main():
 
                 # Display interactive renaming form
                 with st.form("schema_confirmation_form"):
-                    st.write("#### Column Mapping")
-                    updated_names = {}
+                    st.write("#### Column Mapping & Selection")
+                    st.info("Select the columns you want to include in the analysis and provide final names.")
+                    
+                    column_settings = {}
                     grid_cols = st.columns(3)
                     for i, old_name in enumerate(df_raw.columns):
                         with grid_cols[i % 3]:
-                            default_val = run_ctx.suggested_column_renames.get(old_name, old_name)
-                            updated_names[old_name] = st.text_input(
-                                f"Source: {old_name}", 
-                                value=default_val, 
-                                key=f"rename_{old_name}_{run_ctx.run_id}"
-                            )
+                            with st.container(border=True):
+                                # Selection Toggle
+                                is_selected = st.checkbox("Include in Analysis", value=True, key=f"select_{old_name}_{run_ctx.run_id}")
+                                
+                                # Renaming Input (only if selected)
+                                default_val = run_ctx.suggested_column_renames.get(old_name, old_name)
+                                new_name = st.text_input(
+                                    f"Rename: {old_name}", 
+                                    value=default_val, 
+                                    key=f"rename_{old_name}_{run_ctx.run_id}",
+                                    disabled=not is_selected
+                                )
+                                column_settings[old_name] = {"selected": is_selected, "name": new_name}
                     
                     st.markdown("<br>", unsafe_allow_html=True)
-                    submitted = st.form_submit_button("📢 Finalize Schema & Start Analysis", use_container_width=True)
+                    submitted = st.form_submit_button("📢 Finalize Selection & Start Analysis", use_container_width=True)
+                    
                     if submitted:
-                        # Apply renames and fix duplicates
-                        clean_renames = {old: (new.strip() if new.strip() else old) for old, new in updated_names.items()}
-                        final_names = []
-                        seen = {}
-                        for old_name, new_name in clean_renames.items():
-                            base = clean_column_name(new_name)
-                            if base in seen:
-                                seen[base] += 1
-                                final_names.append(f"{base}_{seen[base]}")
-                            else:
-                                seen[base] = 0
-                                final_names.append(base)
+                        # 1. Filter only selected columns
+                        selected_old_names = [old for old, settings in column_settings.items() if settings["selected"]]
                         
-                        # Re-sync with final names
-                        df_final = df_raw.copy()
-                        df_final.columns = final_names
-                        store.create_table_from_df(df_final, run_ctx.table_name)
-                        new_profile = profile_data(df_final)
-                        run_ctx.schema_info = new_profile['inferred_types']
-                        run_ctx.is_schema_finalized = True
-                        st.success("✅ Architecture Finalized! Unlocking analytics engine...")
-                        st.rerun()
+                        if not selected_old_names:
+                            st.error("Please select at least one column for analysis.")
+                        else:
+                            # 2. Extract and clean names for selected columns
+                            clean_renames = {}
+                            for old in selected_old_names:
+                                new_raw = column_settings[old]["name"]
+                                clean_renames[old] = new_raw.strip() if new_raw.strip() else old
+                            
+                            # 3. Handle duplicates in final names
+                            final_names = []
+                            seen = {}
+                            for old_name, new_name in clean_renames.items():
+                                base = clean_column_name(new_name)
+                                if base in seen:
+                                    seen[base] += 1
+                                    final_names.append(f"{base}_{seen[base]}")
+                                else:
+                                    seen[base] = 0
+                                    final_names.append(base)
+                            
+                            # 4. Create final filtered dataframe
+                            df_final = df_raw[selected_old_names].copy()
+                            df_final.columns = final_names
+                            
+                            # 5. Re-sync everything
+                            store.create_table_from_df(df_final, run_ctx.table_name)
+                            new_profile = profile_data(df_final)
+                            run_ctx.schema_info = new_profile['inferred_types']
+                            run_ctx.is_schema_finalized = True
+                            st.success(f"✅ Schema Locked! {len(selected_old_names)} columns selected. Unlocking analytics...")
+                            st.rerun()
 
             # --- Analytics Section (Only shown after finalization) ---
             if run_ctx.is_schema_finalized:

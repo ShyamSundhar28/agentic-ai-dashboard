@@ -9,6 +9,8 @@ class RunContext(BaseModel):
     run_id: str
     table_name: str = "uploaded_data"
     schema_info: Dict[str, str] = {}
+    suggested_column_renames: Dict[str, str] = {}
+    is_schema_finalized: bool = False
     metadata: Dict[str, Any] = {}
 
     @classmethod

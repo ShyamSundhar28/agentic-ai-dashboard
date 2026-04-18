@@ -125,118 +125,148 @@ def main():
 
             st.success(f"Successfully loaded {len(df_raw)} rows.")
 
-            # --- Agentic Query Section ---
-            st.subheader("💡 Intelligent Insights")
-            query = st.text_input(
-                "Ask a question about your data",
-                placeholder="e.g., 'What are the main drivers of spend?' or 'Show me the trend of active users'",
-                key="query_input"
-            )
+            # --- Data Preparation Section ---
+            if not run_ctx.is_schema_finalized:
+                st.subheader("🛠️ Data Preparation")
+                st.info("Let's finalize your data schema first. You can use AI to suggest better column names, or manually edit them.")
+                
+                col_btn1, col_btn2 = st.columns([1, 4])
+                with col_btn1:
+                    if st.button("✨ Suggest Names with AI"):
+                        with st.spinner("AI is analyzing column samples..."):
+                            try:
+                                from core.llm_service import LLMService
+                                llm = LLMService()
+                                suggestions = {}
+                                for col in df_raw.columns:
+                                    col_str = str(col)
+                                    # Target potentially messy headers
+                                    if "column_" in col_str or "numeric_header_" in col_str or "unnamed" in col_str.lower():
+                                        samples = df_raw[col].dropna().astype(str).head(5).tolist()
+                                        if samples:
+                                            inferred = llm.infer_column_name(col_str, samples)
+                                            suggestions[col_str] = inferred
+                                        else:
+                                            suggestions[col_str] = col_str
+                                    else:
+                                        suggestions[col_str] = col_str
+                                run_ctx.suggested_column_renames = suggestions
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"AI suggestion failed: {e}")
 
-            if query:
-                with st.spinner("🧠 Agents are analyzing..."):
-                    try:
-                        supervisor = SupervisorAgent()
-                        response: SupervisorResponse = supervisor.run_pipeline(
-                            query, 
-                            df_raw, 
-                            run_ctx.schema_info, 
-                            run_ctx.run_id
-                        )
+                # Display interactive renaming form
+                with st.form("schema_confirmation_form"):
+                    st.write("#### Column Configuration")
+                    updated_names = {}
+                    cols = st.columns(3)
+                    for i, old_name in enumerate(df_raw.columns):
+                        with cols[i % 3]:
+                            default_val = run_ctx.suggested_column_renames.get(old_name, old_name)
+                            # Ensure default value is clean
+                            updated_names[old_name] = st.text_input(
+                                f"Header: {old_name}", 
+                                value=default_val, 
+                                key=f"rename_{old_name}_{run_ctx.run_id}"
+                            )
+                    
+                    submitted = st.form_submit_button("✅ Finalize Schema & Start Analysis")
+                    if submitted:
+                        # Apply renames
+                        df_final = df_raw.rename(columns=updated_names)
+                        # Clean up formatting one last time just in case user typed spaces
+                        df_final.columns = [clean_column_name(c) for c in df_final.columns]
                         
-                        # Save result
-                        writer.save_json(run_ctx.run_id, "supervisor_response.json", response.model_dump())
-                        
-                        # Render results
-                        st.markdown(f"### Result: {response.final_output}")
-                        
-                        # Visualizations from Agents
-                        if "visualizations" in response.results:
-                            st.write("#### 📊 Generated Visualizations")
-                            viz_items = response.results["visualizations"]
-                            for i in range(0, len(viz_items), 2):
-                                cols = st.columns(2)
-                                with cols[0]:
-                                    st.write(f"**{viz_items[i].title}**")
-                                    render_chart(df_raw, viz_items[i].chart_type, viz_items[i].config)
-                                if i+1 < len(viz_items):
-                                    with cols[1]:
-                                        st.write(f"**{viz_items[i+1].title}**")
-                                        render_chart(df_raw, viz_items[i+1].chart_type, viz_items[i+1].config)
+                        # Re-sync everything
+                        store.create_table_from_df(df_final, run_ctx.table_name)
+                        new_profile = profile_data(df_final)
+                        run_ctx.schema_info = new_profile['inferred_types']
+                        run_ctx.is_schema_finalized = True
+                        st.success("Schema finalized! Unlocking analytics...")
+                        st.rerun()
 
-                        # RCA Details
-                        if "root_cause" in response.results:
-                            with st.expander("🔍 Deep Dive: Root Cause Analysis", expanded=False):
-                                rca = response.results["root_cause"]
-                                st.write(f"**Primary Driver:** {rca.primary_driver}")
-                                st.info(rca.details)
-                                m1, m2 = st.columns(2)
-                                m1.metric("Impact (Abs)", f"{rca.absolute_change:,.2f}")
-                                m2.metric("Impact (%)", f"{rca.percent_change:+.2f}%")
-                                if rca.contribution_table:
-                                    st.write("**Contribution Breakdown:**")
-                                    st.dataframe(pd.DataFrame(rca.contribution_table), use_container_width=True)
+            # --- Analytics Section (Only shown after finalization) ---
+            if run_ctx.is_schema_finalized:
+                # Re-fetch the cleaned dataframe for downstream agents
+                df_clean = store.conn.execute(f"SELECT * FROM {run_ctx.table_name}").df()
+                
+                st.subheader("💡 Intelligent Insights")
+                query = st.text_input(
+                    "Ask a question about your data or a specific category",
+                    placeholder="e.g., 'What are the main drivers of spend?' or 'Total amount for Walden food bank in Jan'",
+                    key="query_input"
+                )
 
-                        # Recommendations
-                        if "recommendations" in response.results:
-                            with st.expander("🚀 Recommendations", expanded=True):
-                                for rec in response.results["recommendations"]:
-                                    st.markdown(f"- **{rec.action}**: *{rec.rationale}*")
+                if query:
+                    with st.spinner("🧠 Agents are analyzing..."):
+                        try:
+                            supervisor = SupervisorAgent()
+                            response: SupervisorResponse = supervisor.run_pipeline(
+                                query, 
+                                df_clean, 
+                                run_ctx.schema_info, 
+                                run_ctx.run_id
+                            )
+                            
+                            # Save result
+                            writer.save_json(run_ctx.run_id, "supervisor_response.json", response.model_dump())
+                            
+                            # Render results
+                            st.markdown(f"### Result: {response.final_output}")
+                            
+                            # Visualizations from Agents
+                            if "visualizations" in response.results:
+                                st.write("#### 📊 Generated Visualizations")
+                                viz_items = response.results["visualizations"]
+                                for i in range(0, len(viz_items), 2):
+                                    cols = st.columns(2)
+                                    with cols[0]:
+                                        st.write(f"**{viz_items[i].title}**")
+                                        render_chart(df_clean, viz_items[i].chart_type, viz_items[i].config)
+                                    if i+1 < len(viz_items):
+                                        with cols[1]:
+                                            st.write(f"**{viz_items[i+1].title}**")
+                                            render_chart(df_clean, viz_items[i+1].chart_type, viz_items[i+1].config)
 
-                    except Exception as e:
-                        logger.error(f"Agent pipeline failed: {str(e)}")
-                        st.error(f"Analysis failed: {str(e)}")
+                            # RCA Details
+                            if "root_cause" in response.results:
+                                with st.expander("🔍 Deep Dive: Root Cause Analysis", expanded=False):
+                                    rca = response.results["root_cause"]
+                                    st.write(f"**Primary Driver:** {rca.primary_driver}")
+                                    st.info(rca.details)
+                                    m1, m2 = st.columns(2)
+                                    m1.metric("Impact (Abs)", f"{rca.absolute_change:,.2f}")
+                                    m2.metric("Impact (%)", f"{rca.percent_change:+.2f}%")
+                                    if rca.contribution_table:
+                                        st.write("**Contribution Breakdown:**")
+                                        st.dataframe(pd.DataFrame(rca.contribution_table), use_container_width=True)
+
+                            # Recommendations
+                            if "recommendations" in response.results:
+                                with st.expander("🚀 Recommendations", expanded=True):
+                                    for rec in response.results["recommendations"]:
+                                        st.markdown(f"- **{rec.action}**: *{rec.rationale}*")
+
+                        except Exception as e:
+                            logger.error(f"Agent pipeline failed: {str(e)}")
+                            st.error(f"Analysis failed: {str(e)}")
 
             # --- Data Workspace ---
             st.markdown("---")
             tabs = st.tabs(["📊 Data Browser", "🔍 Automated Profiling", "📈 Suggested Charts", "🗄️ SQL Analytics"])
 
             with tabs[0]:
-                if st.button("✨ Clean Data with AI"):
-                    with st.spinner("Analyzing column contents using AI..."):
-                        try:
-                            from core.llm_service import LLMService
-                            llm = LLMService()
-                            
-                            # Retrieve the full data
-                            df_to_clean = store.conn.execute(f"SELECT * FROM {run_ctx.table_name}").df()
-                            
-                            # 1. Redundant safeguard: Drop completely empty columns
-                            df_to_clean.dropna(axis=1, how='all', inplace=True)
-                            
-                            # 2. Use LLM to rename generic columns
-                            new_cols = []
-                            for col in df_to_clean.columns:
-                                col_str = str(col)
-                                # Target columns that didn't have proper names
-                                if "column_" in col_str or "numeric_header_" in col_str or "unnamed" in col_str.lower():
-                                    samples = df_to_clean[col].dropna().astype(str).head(5).tolist()
-                                    if samples:
-                                        inferred = llm.infer_column_name(col_str, samples)
-                                        new_cols.append(inferred)
-                                    else:
-                                        new_cols.append(col_str)
-                                else:
-                                    new_cols.append(col_str)
-                                    
-                            df_to_clean.columns = new_cols
-                            store.create_table_from_df(df_to_clean, run_ctx.table_name)
-                            st.success("Data magically cleaned using AI!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to clean data: {e}")
-
                 st.dataframe(get_table_preview(store.conn, run_ctx.table_name), use_container_width=True)
                 
             with tabs[1]:
                 col1, col2 = st.columns(2)
-                col1.write("**Inferred Types**")
-                col1.json(profile['inferred_types'])
+                col1.write("**Finalized Schema**")
+                col1.json(run_ctx.schema_info)
                 col2.write("**Missing Values**")
                 col2.json(profile['missing_values'])
                 
             with tabs[2]:
-                suggested_charts = ChartSelector.recommend_charts(df_raw, run_ctx.schema_info)
+                suggested_charts = ChartSelector.recommend_charts(df_clean, run_ctx.schema_info)
                 for chart in suggested_charts:
                     st.write(f"#### {chart['title']}")
                     render_chart(df_raw, chart['type'], chart)

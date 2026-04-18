@@ -110,8 +110,11 @@ def main():
                 return
             
             # --- Aggressive Data Cleaning & Preprocessing ---
-            # 1. Drop columns that are completely empty
+            # 1. Identify and Drop columns that are completely empty
+            original_cols = list(df_raw.columns)
             df_raw.dropna(axis=1, how='all', inplace=True)
+            remaining_cols = list(df_raw.columns)
+            dropped_cols = [c for c in original_cols if c not in remaining_cols]
             
             # 2. Drop rows that are completely empty
             df_raw.dropna(axis=0, how='all', inplace=True)
@@ -126,6 +129,7 @@ def main():
             
             if cols_to_drop:
                 df_raw.drop(columns=cols_to_drop, inplace=True)
+                remaining_cols = list(df_raw.columns)
 
             # 4. Clean up remaining column names dynamically
             new_cols = []
@@ -147,33 +151,29 @@ def main():
             run_ctx.schema_info = profile['inferred_types']
             writer.save_json(run_ctx.run_id, "profile.json", profile)
 
-            st.success(f"Successfully loaded {len(df_raw)} rows.")
+            st.success(f"Successfully loaded {len(df_raw)} rows and {len(remaining_cols)} active columns.")
+            if dropped_cols:
+                st.info(f"🧹 Automatically removed {len(dropped_cols)} empty columns: {', '.join(dropped_cols[:3])}{'...' if len(dropped_cols) > 3 else ''}")
 
             # --- Data Preparation Section ---
             if not run_ctx.is_schema_finalized:
-                st.subheader("🛠️ Data Preparation")
-                st.info("Let's finalize your data schema first. You can use AI to suggest better column names, or manually edit them.")
+                st.markdown("### 🛠️ Finalize Column Names")
+                st.info("The columns below have been identified from your data. Please verify or rename them before starting the analysis.")
                 
                 col_btn1, col_btn2 = st.columns([1, 4])
                 with col_btn1:
-                    if st.button("✨ Suggest Names with AI"):
-                        with st.spinner("AI is analyzing column samples..."):
+                    if st.button("✨ AI Suggest Names"):
+                        with st.spinner("Analyzing data samples..."):
                             try:
                                 from core.llm_service import LLMService
                                 llm = LLMService()
                                 suggestions = {}
                                 for col in df_raw.columns:
                                     col_str = str(col)
-                                    # Target potentially messy headers
-                                    if "column_" in col_str or "numeric_header_" in col_str or "unnamed" in col_str.lower():
-                                        samples = df_raw[col].dropna().astype(str).head(5).tolist()
-                                        if samples:
-                                            inferred = llm.infer_column_name(col_str, samples)
-                                            suggestions[col_str] = inferred
-                                        else:
-                                            suggestions[col_str] = col_str
-                                    else:
-                                        suggestions[col_str] = col_str
+                                    # Samples for better inference
+                                    samples = df_raw[col].dropna().astype(str).head(5).tolist()
+                                    inferred = llm.infer_column_name(col_str, samples)
+                                    suggestions[col_str] = inferred
                                 run_ctx.suggested_column_renames = suggestions
                                 st.rerun()
                             except Exception as e:
@@ -181,25 +181,23 @@ def main():
 
                 # Display interactive renaming form
                 with st.form("schema_confirmation_form"):
-                    st.write("#### Column Configuration")
+                    st.write("#### Column Mapping")
                     updated_names = {}
-                    cols = st.columns(3)
+                    grid_cols = st.columns(3)
                     for i, old_name in enumerate(df_raw.columns):
-                        with cols[i % 3]:
+                        with grid_cols[i % 3]:
                             default_val = run_ctx.suggested_column_renames.get(old_name, old_name)
-                            # Ensure default value is clean
                             updated_names[old_name] = st.text_input(
-                                f"Header: {old_name}", 
+                                f"Source: {old_name}", 
                                 value=default_val, 
                                 key=f"rename_{old_name}_{run_ctx.run_id}"
                             )
                     
-                    submitted = st.form_submit_button("✅ Finalize Schema & Start Analysis")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    submitted = st.form_submit_button("📢 Finalize Schema & Start Analysis", use_container_width=True)
                     if submitted:
-                        # 1. Protection: Filter out completely empty names user might have typed
+                        # Apply renames and fix duplicates
                         clean_renames = {old: (new.strip() if new.strip() else old) for old, new in updated_names.items()}
-                        
-                        # 2. Protection: Handle duplicates by adding suffixes automatically
                         final_names = []
                         seen = {}
                         for old_name, new_name in clean_renames.items():
@@ -211,16 +209,14 @@ def main():
                                 seen[base] = 0
                                 final_names.append(base)
                         
-                        # Apply renames
+                        # Re-sync with final names
                         df_final = df_raw.copy()
                         df_final.columns = final_names
-                        
-                        # Re-sync everything
                         store.create_table_from_df(df_final, run_ctx.table_name)
                         new_profile = profile_data(df_final)
                         run_ctx.schema_info = new_profile['inferred_types']
                         run_ctx.is_schema_finalized = True
-                        st.success("Schema finalized! Unlocking analytics...")
+                        st.success("✅ Architecture Finalized! Unlocking analytics engine...")
                         st.rerun()
 
             # --- Analytics Section (Only shown after finalization) ---

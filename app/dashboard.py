@@ -102,11 +102,15 @@ def main():
             df_raw.dropna(axis=1, how='all', inplace=True)
             
             # 2. Aggressive cleaning: Drop unnamed columns that have no actual data rows
-            # (Sometimes pandas reads trailing commas as Unnamed columns with all NaNs)
             cols_to_drop = []
             for col in df_raw.columns:
-                if "Unnamed" in str(col) and df_raw[col].isnull().all():
-                    cols_to_drop.append(col)
+                # Use .all().all() to handle potential name collisions returning multiple columns
+                if "Unnamed" in str(col):
+                    is_null = df_raw[col].isnull()
+                    # If it's a Series (single column) or DataFrame (multi columns with same name)
+                    if (hasattr(is_null, "all") and is_null.all() if not isinstance(is_null, pd.DataFrame) else is_null.all().all()):
+                        cols_to_drop.append(col)
+            
             if cols_to_drop:
                 df_raw.drop(columns=cols_to_drop, inplace=True)
 
@@ -114,10 +118,8 @@ def main():
             new_cols = []
             for i, col in enumerate(df_raw.columns):
                 cleaned = clean_column_name(str(col))
-                # Fix pandas 'Unnamed' or empty columns
                 if 'unnamed' in cleaned or not cleaned:
                     cleaned = f"column_{i+1}"
-                # If a column name is just a number (e.g. no header row)
                 elif cleaned.isdigit():
                     cleaned = f"numeric_header_{cleaned}"
                 new_cols.append(cleaned)

@@ -247,6 +247,15 @@ def main():
                 # Re-fetch the cleaned dataframe for downstream agents
                 df_clean = store.conn.execute(f"SELECT * FROM {run_ctx.table_name}").df()
                 
+                st.markdown("---")
+                st.subheader("📊 Analytics Overview")
+                
+                # Show Preview of the Finalized Data (Renamed and Filtered)
+                with st.expander("👀 View Finalized Data Preview", expanded=True):
+                    st.write("This is how your data looks after selection and renaming:")
+                    st.dataframe(df_clean.head(10), use_container_width=True)
+                    st.caption(f"Showing first 10 rows of {len(df_clean)} total records across {len(df_clean.columns)} selected columns.")
+
                 st.subheader("💡 Intelligent Insights")
                 query = st.text_input(
                     "Ask a question about your data or a specific category",

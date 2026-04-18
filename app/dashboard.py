@@ -183,10 +183,24 @@ def main():
                     
                     submitted = st.form_submit_button("✅ Finalize Schema & Start Analysis")
                     if submitted:
+                        # 1. Protection: Filter out completely empty names user might have typed
+                        clean_renames = {old: (new.strip() if new.strip() else old) for old, new in updated_names.items()}
+                        
+                        # 2. Protection: Handle duplicates by adding suffixes automatically
+                        final_names = []
+                        seen = {}
+                        for old_name, new_name in clean_renames.items():
+                            base = clean_column_name(new_name)
+                            if base in seen:
+                                seen[base] += 1
+                                final_names.append(f"{base}_{seen[base]}")
+                            else:
+                                seen[base] = 0
+                                final_names.append(base)
+                        
                         # Apply renames
-                        df_final = df_raw.rename(columns=updated_names)
-                        # Clean up formatting one last time just in case user typed spaces
-                        df_final.columns = [clean_column_name(c) for c in df_final.columns]
+                        df_final = df_raw.copy()
+                        df_final.columns = final_names
                         
                         # Re-sync everything
                         store.create_table_from_df(df_final, run_ctx.table_name)

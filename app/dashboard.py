@@ -83,7 +83,7 @@ def main():
     st.sidebar.markdown("---")
 
     # File Upload
-    uploaded_file = st.file_uploader("Upload your data (CSV)", type=["csv"], help="Upload a business dataset to begin.")
+    uploaded_file = st.file_uploader("Upload your data (CSV or Excel)", type=["csv", "xlsx", "xls"], help="Upload a business dataset to begin.")
 
     if uploaded_file:
         # Create temp path for ingestion
@@ -92,11 +92,15 @@ def main():
         temp_path = os.path.join(temp_dir, f"{run_ctx.run_id}_{uploaded_file.name}")
 
         try:
-            # Save and clean
+            # Save the file
             with open(temp_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
-            df_raw = pd.read_csv(temp_path)
+            # Read based on file extension
+            if uploaded_file.name.endswith('.csv'):
+                df_raw = pd.read_csv(temp_path)
+            else:
+                df_raw = pd.read_excel(temp_path)
             
             # Check if file is empty
             if df_raw.empty:
@@ -105,30 +109,32 @@ def main():
                 st.warning("⚠️ The uploaded file contains no data rows. Please upload a valid business dataset.")
                 return
             
-            # 1. Aggressive cleaning: Drop columns that are completely empty
+            # --- Aggressive Data Cleaning & Preprocessing ---
+            # 1. Drop columns that are completely empty
             df_raw.dropna(axis=1, how='all', inplace=True)
             
-            # 2. Aggressive cleaning: Drop unnamed columns that have no actual data rows
+            # 2. Drop rows that are completely empty
+            df_raw.dropna(axis=0, how='all', inplace=True)
+
+            # 3. Drop unnamed columns that have no actual data rows
             cols_to_drop = []
             for col in df_raw.columns:
-                # Use .all().all() to handle potential name collisions returning multiple columns
                 if "Unnamed" in str(col):
                     is_null = df_raw[col].isnull()
-                    # If it's a Series (single column) or DataFrame (multi columns with same name)
                     if (hasattr(is_null, "all") and is_null.all() if not isinstance(is_null, pd.DataFrame) else is_null.all().all()):
                         cols_to_drop.append(col)
             
             if cols_to_drop:
                 df_raw.drop(columns=cols_to_drop, inplace=True)
 
-            # 3. Clean up remaining column names dynamically
+            # 4. Clean up remaining column names dynamically
             new_cols = []
             for i, col in enumerate(df_raw.columns):
                 cleaned = clean_column_name(str(col))
                 if 'unnamed' in cleaned or not cleaned:
-                    cleaned = f"column_{i+1}"
+                    cleaned = f"col_{i+1}"
                 elif cleaned.isdigit():
-                    cleaned = f"numeric_header_{cleaned}"
+                    cleaned = f"n_header_{cleaned}"
                 new_cols.append(cleaned)
             
             df_raw.columns = new_cols

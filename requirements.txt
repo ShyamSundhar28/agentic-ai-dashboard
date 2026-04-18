@@ -1,5 +1,3 @@
-fastapi
-uvicorn
 streamlit
 pandas
 duckdb
@@ -10,3 +8,4 @@ pyarrow
 pytest
 pydantic-settings
 google-generativeai
+openpyxl

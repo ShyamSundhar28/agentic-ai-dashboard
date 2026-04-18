@@ -98,6 +98,13 @@ def main():
 
             df_raw = pd.read_csv(temp_path)
             
+            # Check if file is empty
+            if df_raw.empty:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                st.warning("⚠️ The uploaded file contains no data rows. Please upload a valid business dataset.")
+                return
+            
             # 1. Aggressive cleaning: Drop columns that are completely empty
             df_raw.dropna(axis=1, how='all', inplace=True)
             

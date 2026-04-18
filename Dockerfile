@@ -1,14 +1,20 @@
-# Use an official Python runtime as a parent image
+# Stage 1: Build React Dashboard
+FROM node:20-slim AS build-stage
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve with Python
 FROM python:3.12-slim
+WORKDIR /app
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV PYTHONPATH=/app
-
-# Set work directory
-WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
@@ -20,12 +26,12 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project
+# Copy project files and build output
 COPY . .
+COPY --from=build-stage /app/dist /app/dist
 
-# Expose port (Cloud Run will override this with the PORT env var)
+# Expose port
 EXPOSE 8080
 
-# Command to run the application
-# We use the PORT environment variable to bind to the correct port
-CMD streamlit run app/dashboard.py --server.port=${PORT} --server.address=0.0.0.0
+# Run the FastAPI server
+CMD ["python", "app/main.py"]
